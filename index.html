@@ -1,0 +1,759 @@
+<!DOCTYPE html>
+<html lang="ko" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>How o1 Works — 답하기 전에 생각하는 데 계산을 쓰는 모델</title>
+<meta name="description" content="OpenAI o1(Learning to Reason with LLMs, 2024 · o1 System Card)의 추론 부분을 따라가는 인터랙티브 교육 자료. 토큰당 계산 한도와 사고 사슬, 다수결·검증기 재순위로 보는 테스트 시 계산 스케일링, 강화학습이 만드는 검산 습관, 암호 해독 CoT, IOI 선택 전략, 숨긴 CoT와 모니터링.">
+<style>
+:root{
+  color-scheme: light;
+  --surface-1:#fcfcfb;
+  --page:#f9f9f7;
+  --text-primary:#0b0b0b;
+  --text-secondary:#52514e;
+  --muted:#898781;
+  --grid:#e1e0d9;
+  --axis:#c3c2b7;
+  --border:rgba(11,11,11,0.10);
+  --s1:#2a78d6;
+  --s2:#eb6834;
+  --s3:#1baf7a;
+  --s4:#8b5cf6;
+  --s8:#e34948;
+  --warn:#fab219;
+  --good:#0ca30c;
+  --wash:rgba(42,120,214,0.08);
+}
+:root[data-theme="dark"]{
+  color-scheme: dark;
+  --surface-1:#1a1a19;
+  --page:#0d0d0d;
+  --text-primary:#ffffff;
+  --text-secondary:#c3c2b7;
+  --muted:#898781;
+  --grid:#2c2c2a;
+  --axis:#383835;
+  --border:rgba(255,255,255,0.10);
+  --s1:#3987e5;
+  --s2:#d95926;
+  --s3:#199e70;
+  --s4:#a78bfa;
+  --s8:#e66767;
+  --warn:#fab219;
+  --good:#0ca30c;
+  --wash:rgba(57,135,229,0.14);
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%; scroll-behavior:smooth}
+body{
+  margin:0; background:var(--page); color:var(--text-primary);
+  font-family:system-ui,-apple-system,"Segoe UI","Apple SD Gothic Neo","Noto Sans KR",sans-serif;
+  font-size:16px; line-height:1.75; letter-spacing:-0.01em;
+}
+.wrap{max-width:880px;margin:0 auto;padding:0 16px 120px}
+header.hero{padding:56px 0 28px;border-bottom:1px solid var(--border);margin-bottom:8px}
+h1{font-size:clamp(28px,5.2vw,42px);line-height:1.25;margin:0 0 12px;letter-spacing:-0.03em}
+.sub{color:var(--text-secondary);font-size:17px;margin:0}
+.kicker{font-size:12px;letter-spacing:0.12em;text-transform:uppercase;color:var(--muted);font-weight:600;margin:0 0 10px}
+h2{font-size:clamp(21px,3.4vw,27px);margin:56px 0 6px;letter-spacing:-0.02em;line-height:1.3}
+h3{font-size:18px;margin:34px 0 6px;letter-spacing:-0.015em}
+p{margin:12px 0}
+ul,ol{margin:12px 0;padding-left:22px}
+li{margin:6px 0}
+strong{font-weight:650}
+code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:0.9em;background:var(--wash);padding:1px 5px;border-radius:4px}
+a{color:var(--s1)}
+.demo{background:var(--surface-1);border:1px solid var(--border);border-radius:14px;padding:18px;margin:24px 0}
+.demo h4{margin:0 0 2px;font-size:15px;color:var(--text-primary);font-weight:650}
+.demo .cap{color:var(--muted);font-size:13px;margin:0 0 14px;line-height:1.6}
+canvas{display:block;width:100%;border-radius:8px;background:var(--surface-1);touch-action:manipulation}
+.ctrls{display:flex;flex-wrap:wrap;gap:14px 22px;margin:14px 0 4px;align-items:flex-end}
+.ctrl{flex:1 1 210px;min-width:170px}
+.ctrl label{display:flex;justify-content:space-between;align-items:baseline;font-size:13px;color:var(--text-secondary);margin-bottom:4px;gap:10px}
+.ctrl label b{font-variant-numeric:tabular-nums;color:var(--text-primary);font-weight:650;font-size:13px}
+input[type=range]{width:100%;accent-color:var(--s1);height:22px;margin:0}
+.btns{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
+button{font:inherit;font-size:13px;font-weight:600;padding:7px 14px;border-radius:8px;cursor:pointer;
+  border:1px solid var(--border);background:var(--surface-1);color:var(--text-primary);transition:background .12s}
+button:hover{background:var(--wash)}
+button[aria-pressed=true]{background:var(--wash);border-color:var(--s1)}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:12.5px;color:var(--text-secondary);margin:10px 0 0}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.legend i{width:14px;height:3px;border-radius:2px;display:inline-block}
+.readout{display:flex;flex-wrap:wrap;gap:8px 26px;margin-top:12px;font-size:13px;color:var(--text-secondary)}
+.readout b{display:block;font-size:19px;color:var(--text-primary);font-weight:650;line-height:1.3;letter-spacing:-0.02em;font-variant-numeric:tabular-nums}
+.eq{background:var(--surface-1);border:1px solid var(--border);border-left:3px solid var(--s1);
+  border-radius:0 10px 10px 0;padding:14px 18px;margin:18px 0;overflow-x:auto;text-align:center}
+.eq .note{display:block;font-size:12.5px;color:var(--muted);margin:6px 0 0;line-height:1.55;text-align:left}
+.tw{overflow-x:auto;margin:18px 0;border:1px solid var(--border);border-radius:12px;background:var(--surface-1)}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th,td{padding:9px 13px;text-align:left;border-bottom:1px solid var(--border);vertical-align:middle}
+th{font-weight:650;font-size:12.5px;color:var(--text-secondary);background:var(--page)}
+tr:last-child td{border-bottom:none}
+td.num,th.num{font-variant-numeric:tabular-nums;text-align:right}
+td.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px}
+.note{border-left:3px solid var(--axis);padding:2px 0 2px 16px;margin:18px 0;color:var(--text-secondary);font-size:14.5px}
+.key{border:1px solid var(--border);border-left:3px solid var(--s2);background:var(--surface-1);
+  border-radius:0 10px 10px 0;padding:14px 18px;margin:20px 0}
+.key .lbl{font-size:11.5px;font-weight:700;letter-spacing:0.1em;color:var(--s2);display:block;margin-bottom:4px}
+.key p{margin:0}
+nav.toc{background:var(--surface-1);border:1px solid var(--border);border-radius:14px;padding:18px 22px;margin:26px 0}
+nav.toc ol{margin:6px 0 0;padding-left:20px;font-size:14.5px}
+nav.toc a{text-decoration:none;color:var(--text-primary)}
+nav.toc a:hover{color:var(--s1)}
+.q{border:1px solid var(--border);border-radius:10px;background:var(--surface-1);padding:16px 18px;margin:14px 0}
+.q h4{margin:0 0 8px;font-size:15px;color:var(--text-primary)}
+.q .opt{display:flex;gap:9px;align-items:flex-start;padding:7px 10px;border:1px solid var(--border);
+  border-radius:8px;margin:6px 0;cursor:pointer;font-size:14px;transition:border-color .12s}
+.q .opt:hover{border-color:var(--s1)}
+.q .opt input{margin-top:5px;accent-color:var(--s1)}
+.q .opt.correct{border-color:var(--good);background:rgba(12,163,12,0.08)}
+.q .opt.wrong{border-color:var(--s8);background:rgba(227,73,72,0.07)}
+.q .expl{display:none;font-size:13.5px;color:var(--text-secondary);border-left:3px solid var(--good);
+  padding:2px 0 2px 12px;margin-top:10px;line-height:1.65}
+.q .expl.bad{border-left-color:var(--s8)}
+.q .expl.show{display:block}
+.quiz-score{font-size:15px;font-weight:700;margin-top:14px}
+.tog{position:fixed;top:14px;right:14px;z-index:10;border-radius:999px;padding:7px 13px;
+  background:var(--surface-1);border:1px solid var(--border);font-size:12.5px}
+footer{margin-top:70px;padding-top:22px;border-top:1px solid var(--border);color:var(--muted);font-size:13px}
+footer a{color:var(--text-secondary)}
+.refs{font-size:13px;color:var(--text-secondary);line-height:1.7}
+.easy{background:var(--surface-1);border:1px solid var(--border);border-left:3px solid var(--s3);border-radius:0 14px 14px 0;padding:18px 20px;margin:24px 0}
+.easy .lbl{font-size:11.5px;font-weight:700;letter-spacing:0.1em;color:var(--s3);display:block;margin-bottom:2px}
+.easy h3{margin:0 0 8px}
+.easy ol{padding-left:20px}
+.easy .big{font-size:17px;text-align:center;margin:10px 0;font-weight:650}
+.sw{display:grid;grid-template-columns:150px 1fr 64px;gap:8px 10px;align-items:center;font-size:13px;margin-top:12px}
+.sw .bar{position:relative;height:18px;background:var(--page);border:1px solid var(--border);border-radius:4px}
+.sw .bar i{position:absolute;top:0;bottom:0;border-radius:3px}
+.sw .bar:after{content:'';position:absolute;left:50%;top:-3px;bottom:-3px;border-left:1px solid var(--axis)}
+.sw b{font-variant-numeric:tabular-nums;text-align:right}
+.split{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+@media (max-width:640px){.split{grid-template-columns:1fr}}
+.split h5{margin:4px 0 0;font-size:13px;color:var(--text-secondary);font-weight:650}
+.flow{display:flex;flex-wrap:wrap;align-items:center;gap:6px;font-size:13px;margin:16px 0;justify-content:center}
+.flow span{border:1px solid var(--border);background:var(--surface-1);border-radius:8px;padding:5px 10px;font-weight:600}
+.flow em{color:var(--muted);font-style:normal}
+sup.fn{font-size:0.72em;line-height:0;margin-left:1px}
+sup.fn a{text-decoration:none;font-weight:700;padding:0 2px}
+.footnotes{margin-top:64px;padding-top:18px;border-top:1px solid var(--border);font-size:14.5px;color:var(--text-secondary)}
+.footnotes h2{font-size:18px;margin:0 0 10px;color:var(--text-primary)}
+.footnotes ol{padding-left:22px}
+.footnotes li:target{background:var(--wash);border-radius:8px}
+.footnotes p{margin:10px 0}
+.footnotes .tw{font-size:13.5px}
+.footnotes .back{text-decoration:none;margin-left:4px}
+.pill{display:inline-block;font-size:11.5px;font-weight:700;padding:1px 8px;border-radius:999px;background:var(--wash);color:var(--s1);margin-left:6px;vertical-align:2px}
+
+@media (max-width:640px){.tog{position:absolute}}
+.ax-tp{color:var(--s1)}.ax-cp{color:var(--s4)}.ax-pp{color:var(--s2)}.ax-dp{color:var(--s3)}.ax-ep{color:var(--s8)}
+.tag{display:inline-block;font-size:11.5px;font-weight:700;padding:1px 8px;border-radius:999px;border:1px solid currentColor;margin-right:4px}
+svg.fig{display:block;width:100%;height:auto;margin:6px 0}
+svg.fig text{font-family:system-ui,-apple-system,"Apple SD Gothic Neo","Noto Sans KR",sans-serif;fill:var(--text-primary)}
+svg.fig .m{fill:var(--muted)}
+.gpu{cursor:pointer}
+.info{font-size:13.5px;color:var(--text-secondary);margin-top:10px;line-height:1.7;min-height:3.4em}
+.info b{color:var(--text-primary)}
+.seg{display:inline-flex;border:1px solid var(--border);border-radius:9px;overflow:hidden;flex-wrap:wrap}
+.seg button{border:none;border-radius:0;border-right:1px solid var(--border)}
+.seg button:last-child{border-right:none}
+.mini{font-size:12.5px;color:var(--muted);margin:8px 0 0}
+pre{background:var(--surface-1);border:1px solid var(--border);border-radius:12px;padding:14px 16px;overflow-x:auto;font-size:13px;line-height:1.6;margin:18px 0}
+#a4tb th,#a4tb td{white-space:nowrap}
+pre code{background:none;padding:0;font-size:inherit}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0}
+.chip{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;border:1px solid var(--border);border-radius:6px;padding:3px 8px;background:var(--page)}
+.chip.tok{border-color:var(--s1);background:var(--wash)}
+.chip.ok{border-color:var(--good);background:rgba(12,163,12,0.08)}
+.chip.bad{border-color:var(--s8);background:rgba(227,73,72,0.07)}
+.row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:13.5px;margin:8px 0}
+.row .lab{min-width:118px;color:var(--text-secondary);font-weight:600}
+.trace{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;line-height:1.7;background:var(--page);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin:8px 0;white-space:pre-wrap}
+.trace .w{color:var(--s8)}.trace .g{color:var(--good)}.trace .m{color:var(--muted)}
+.step-box{min-height:150px}
+.stepnav{display:flex;align-items:center;gap:10px;margin-top:12px;font-size:13px;color:var(--muted)}
+textarea,input[type=text]{width:100%;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13.5px;padding:8px 10px;border-radius:8px;border:1px solid var(--border);background:var(--page);color:var(--text-primary)}
+.big-out{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:15px;font-weight:650;letter-spacing:0.02em;word-break:break-all;margin:6px 0}
+.tag{display:inline-block;font-size:11px;font-weight:700;padding:1px 7px;border-radius:999px;border:1px solid var(--border);color:var(--text-secondary);margin-left:6px;vertical-align:1px}
+</style>
+</head>
+<body>
+<button class="tog" id="themeBtn" type="button">◐ 다크</button>
+<div class="wrap">
+<header class="hero">
+  <p class="kicker">추론 모델 · Test-time compute</p>
+  <h1>How o1 Works — 답하기 전에 생각하는 데 계산을 쓰는 모델</h1>
+  <p class="sub">GPT-4o는 AIME 2024 문제 15개 중 평균 1.8개를 풀었고, 2024년 9월 공개된 OpenAI o1은 한 번에 11.1개, 64번 풀어 다수결로 12.5개, 1000번 풀어 학습된 채점기로 고르면 13.9개를 풀었습니다. 모델을 키운 것이 아니라 <strong>답하기 전에 긴 사고 사슬(chain of thought)을 쓰도록 강화학습으로 가르친</strong> 결과입니다. 이 페이지는 OpenAI의 「Learning to Reason with LLMs」와 「o1 System Card」에서 추론에 관한 부분만 골라, 왜 생각을 적으면 더 풀리는지, 생각에 쓰는 계산을 늘리면 정확도가 어떻게 오르는지, 강화학습이 어떤 사고 습관을 만드는지를 브라우저에서 직접 실험해 봅니다.</p>
+</header>
+
+<div class="key">
+  <span class="lbl">이 자료의 축</span>
+  <p><strong>성능을 올리는 손잡이가 하나 더 생겼다: 답하기 전에 쓰는 계산.</strong> 지금까지는 학습에 쓰는 계산(모델·데이터 크기)을 늘려야 성능이 올랐다. o1은 사고 사슬을 길게 쓰는 법을 강화학습으로 배워서, <span class="ax-tp"><strong>학습 시 계산</strong></span>(RL을 더 오래)과 <span class="ax-pp"><strong>테스트 시 계산</strong></span>(더 오래 생각하기) 양쪽 모두 로그 스케일에서 꾸준히 좋아진다. 핵심은 모델이 생각을 더 길게 쓰는 것 자체가 아니라, 그 과정에서 <strong>자기 실수를 알아채고 다른 방법으로 다시 시도하는 습관</strong>을 보상으로 익힌다는 점이다.</p>
+</div>
+
+<nav class="toc">
+  <strong>학습 경로</strong>
+  <ol>
+    <li><a href="#s1">o1이 바꾼 것: 두 번째 스케일링 축</a></li>
+    <li><a href="#s2">왜 생각을 적으면 더 풀리는가: 토큰 한 칸의 계산 한도</a></li>
+    <li><a href="#s3">o1 이전의 계보: 프롬프트 → 투표 → 검증기 → 자기 학습</a></li>
+    <li><a href="#s4">테스트 시 계산: 한 번, 64번 투표, 1000번 재순위</a></li>
+    <li><a href="#s5">학습 시 계산: 강화학습이 만드는 검산 습관</a></li>
+    <li><a href="#s6">사고 사슬 들여다보기: 암호 해독</a></li>
+    <li><a href="#s7">손으로 짠 전략 vs 스케일: IOI와 Codeforces</a></li>
+    <li><a href="#s8">사고 사슬을 숨긴 이유와 모니터링</a></li>
+    <li><a href="#s9">한계와 열린 질문</a></li>
+    <li><a href="#s10">정리</a></li>
+    <li><a href="#s11">확인 퀴즈</a></li>
+  </ol>
+</nav>
+
+<p class="note">o1은 학습 방법을 담은 논문을 내지 않았습니다. 이 자료가 근거로 삼는 1차 자료는 OpenAI 블로그 「Learning to Reason with LLMs」(2024. 9. 12)와 「OpenAI o1 System Card」(2024. 12. 5, arXiv:2412.16720)입니다. RL 알고리즘, 보상, 데이터 규모는 두 문서 어디에도 나오지 않으므로, 학습 쪽 설명은 공개된 관련 연구(Lightman 외 2023, Snell 외 2024, DeepSeek-R1 2025)로 보충하고 그 사실을 표시했습니다. 데모는 원리를 보이는 장난감 모형이지 o1의 재현이 아닙니다.</p>
+
+<!-- ───────── 1 ───────── -->
+<h2 id="s1">1. o1이 바꾼 것: 두 번째 스케일링 축</h2>
+<p>블로그의 첫 문단은 o1을 이렇게 소개합니다.</p>
+<div class="eq" style="text-align:left">
+"We are introducing OpenAI o1, a new large language model trained with reinforcement learning to perform complex reasoning. o1 thinks before it answers — it can produce a long internal chain of thought before responding to the user."
+<span class="note">강화학습으로 복잡한 추론을 하도록 학습한 LLM. 사용자에게 답하기 전에 긴 내부 사고 사슬을 만든다.</span>
+</div>
+<p>그리고 이 글에서 가장 많이 인용되는 문장이 이어집니다.</p>
+<div class="eq" style="text-align:left">
+"We have found that the performance of o1 consistently improves with more reinforcement learning (<span class="ax-tp">train-time compute</span>) and with more time spent thinking (<span class="ax-pp">test-time compute</span>)."
+</div>
+<p>블로그에는 산점도 두 장이 실려 있습니다. 둘 다 세로축은 AIME 정확도(pass@1), 가로축은 계산량을 <strong>로그 스케일</strong>로 놓았습니다. 하나는 학습 중 RL 계산을, 다른 하나는 문제를 풀 때 쓰는 계산을 늘린 것이고, 캡션은 "o1 performance smoothly improves with both train-time and test-time compute"입니다. 눈금 값은 공개되지 않아서 정확한 기울기는 알 수 없지만, 두 그림 모두 점들이 로그 가로축 위에서 대략 직선으로 올라갑니다.</p>
+<div class="tw"><table>
+<tr><th></th><th>사전학습 스케일링 (Kaplan 외 2020)</th><th>o1의 테스트 시 스케일링</th></tr>
+<tr><td>늘리는 것</td><td>파라미터 N · 데이터 D · 학습 계산 C</td><td>문제 하나에 쓰는 생각의 양(토큰 수·샘플 수)</td></tr>
+<tr><td>돈을 내는 시점</td><td>모델을 만들 때 한 번</td><td>질문할 때마다</td></tr>
+<tr><td>문제별 조절</td><td>불가능 — 모든 입력에 같은 모델</td><td>가능 — 어려운 문제에만 오래 생각</td></tr>
+<tr><td>측정 형태</td><td>loss가 C의 멱법칙</td><td>정확도가 log(계산)에 대해 대략 선형</td></tr>
+</table></div>
+<p>블로그는 "이 접근법을 키울 때의 제약은 LLM 사전학습과 상당히 다르다"고만 적고 더 설명하지 않습니다. 이 자료는 두 축이 각각 무엇을 하는지를 4절(테스트 시)과 5절(학습 시)에서 따로 실험합니다. 먼저 그 바탕인 질문, <strong>왜 생각을 적으면 원래 못 풀던 문제가 풀리는가</strong>부터 봅니다.</p>
+
+<!-- ───────── 2 ───────── -->
+<h2 id="s2">2. 왜 생각을 적으면 더 풀리는가: 토큰 한 칸의 계산 한도</h2>
+<p>Transformer는 토큰 하나를 만들 때 정해진 수의 층을 한 번 통과합니다. 문제가 아무리 어려워도 다음 토큰 하나에 쓰는 계산량은 같습니다. 답을 바로 쓰라고 하면 문제 전체를 <strong>층 수만큼의 계산 안에서</strong> 끝내야 합니다. 중간 결과를 토큰으로 적어 두면 사정이 달라집니다. 적어 둔 토큰은 다음 토큰을 만들 때 다시 입력으로 들어오므로, 모델은 생각을 적은 길이만큼 직렬 계산을 더 할 수 있습니다. 사고 사슬은 <strong>출력 토큰을 작업 메모리로 쓰는 방법</strong>입니다.</p>
+<p>아래 장난감은 이 제약을 극단적으로 단순화한 것입니다. 모델은 토큰 한 칸에서 덧셈을 최대 k번 할 수 있다고 가정합니다. 숫자 n개를 더하려면 덧셈이 n−1번 필요합니다.</p>
+
+<div class="demo">
+  <h4>데모 1 · 바로 답하기 vs 중간 합을 적어 가며 답하기</h4>
+  <p class="cap">n−1 > k이면 바로 답하는 모델은 한 칸 안에 계산을 끝내지 못해 추측하게 됩니다. 사고 사슬 모델은 k번씩 끊어서 중간 합을 토큰으로 적습니다.</p>
+  <div class="ctrls">
+    <div class="ctrl"><label>숫자 개수 n <b id="d1nV">8</b></label><input type="range" id="d1n" min="2" max="20" value="8"></div>
+    <div class="ctrl"><label>토큰 한 칸의 덧셈 한도 k <b id="d1kV">3</b></label><input type="range" id="d1k" min="1" max="8" value="3"></div>
+  </div>
+  <div class="btns"><button id="d1new" type="button">새 숫자</button></div>
+  <div class="row"><span class="lab">문제</span><span id="d1q" class="chips" style="margin:0"></span></div>
+  <div class="row"><span class="lab">바로 답하기</span><span id="d1direct" class="chips" style="margin:0"></span></div>
+  <div class="row"><span class="lab">사고 사슬</span><span id="d1cot" class="chips" style="margin:0"></span></div>
+  <div class="readout">
+    <div>필요한 덧셈<b id="d1ops">7</b></div>
+    <div>바로 답하기<b id="d1dres">—</b></div>
+    <div>사고 사슬 토큰 수<b id="d1tok">—</b></div>
+  </div>
+</div>
+<p>실제 Transformer에서 이 직관은 이론 결과로도 뒷받침됩니다. 깊이가 고정된 Transformer가 바로 답만 쓸 때 풀 수 있는 문제의 범위는 제한적이지만, 중간 단계를 생성하게 하면 그 범위가 생성 길이에 비례해 넓어진다는 것이 증명되어 있습니다(Feng 외 2023, Merrill &amp; Sabharwal 2024). 직관적으로 말하면 <strong>사고 사슬의 길이 = 문제에 쓸 수 있는 직렬 계산의 양</strong>입니다.</p>
+<div class="key"><span class="lbl">그래서 "테스트 시 계산"이 의미를 갖는다</span><p>사고 사슬이 없으면 모델이 문제 하나에 쓰는 계산은 모델 크기로 고정된다. 사고 사슬이 있으면 그 양을 질문마다 늘리고 줄일 수 있다. o1의 두 번째 스케일링 축은 여기서 나온다.</p></div>
+
+<!-- ───────── 3 ───────── -->
+<h2 id="s3">3. o1 이전의 계보: 프롬프트 → 투표 → 검증기 → 자기 학습</h2>
+<p>"생각을 적게 하면 더 잘 푼다"는 o1이 처음 발견한 것이 아닙니다. 2022년부터 쌓인 연구를 순서대로 보면 o1이 무엇을 더했는지가 분명해집니다.</p>
+<div class="tw"><table>
+<tr><th>연구</th><th>한 일</th><th>핵심 수치</th></tr>
+<tr><td><strong>Chain-of-Thought 프롬프팅</strong><br><span style="color:var(--muted);font-size:12.5px">Wei 외, 2022</span></td><td>풀이 과정이 담긴 예시를 프롬프트에 넣으면 모델도 풀이를 쓰고 정답률이 오른다. 충분히 큰 모델에서만 나타난다.</td><td>540B 모델 + 예시 8개로 GSM8K 최고 성능, 검증기를 쓴 파인튜닝 GPT-3도 넘음</td></tr>
+<tr><td><strong>Self-Consistency</strong><br><span style="color:var(--muted);font-size:12.5px">Wang 외, 2022</span></td><td>풀이를 여러 개 샘플링하고 최종 답으로 다수결한다. 테스트 시 계산을 샘플 수로 늘리는 가장 단순한 방법.</td><td>GSM8K +17.9%p, AQuA +12.2%p</td></tr>
+<tr><td><strong>STaR</strong><br><span style="color:var(--muted);font-size:12.5px">Zelikman 외, 2022</span></td><td>모델이 쓴 풀이 중 정답에 도달한 것만 모아 다시 학습하고 반복한다. 틀린 문제는 정답을 힌트로 주고 풀이를 다시 쓰게 한다(rationalization).</td><td>CommonsenseQA에서 30배 큰 모델 파인튜닝과 비슷한 성능</td></tr>
+<tr><td><strong>Let's Verify Step by Step</strong><br><span style="color:var(--muted);font-size:12.5px">Lightman 외(OpenAI), 2023</span></td><td>풀이의 최종 답만 채점하는 결과 보상 모델(ORM) 대신, <strong>각 단계</strong>가 맞는지 채점하는 과정 보상 모델(PRM)을 학습해 best-of-N을 고른다.</td><td>MATH 500문제, N=1860: 다수결 69.6% · ORM 72.4% · PRM 78.2%. PRM800K = 단계 라벨 80만 개</td></tr>
+<tr><td><strong>테스트 시 계산 최적 배분</strong><br><span style="color:var(--muted);font-size:12.5px">Snell 외, 2024</span></td><td>문제 난이도에 맞춰 검증기 탐색과 순차적 수정 중 무엇에 계산을 쓸지 고르면 효율이 크게 오른다.</td><td>best-of-N 대비 4배 이상 효율. FLOPs를 맞추면 14배 큰 모델을 이기는 경우도 있음</td></tr>
+<tr><td><strong>o1</strong><br><span style="color:var(--muted);font-size:12.5px">OpenAI, 2024</span></td><td>사고 사슬을 프롬프트로 끌어내는 것이 아니라 <strong>대규모 강화학습으로 사고 사슬 쓰는 법 자체를 학습</strong>한다.</td><td>AIME pass@1: GPT-4o 9.3% → o1 74.4%</td></tr>
+</table></div>
+<p>앞의 다섯 줄은 두 갈래로 나뉩니다. 프롬프팅·투표·검증기는 <span class="ax-pp"><strong>이미 있는 모델에서 테스트 시에 더 좋은 답을 뽑아내는 방법</strong></span>이고, STaR는 <span class="ax-tp"><strong>모델이 스스로 만든 좋은 풀이로 모델을 바꾸는 방법</strong></span>입니다. o1은 뒤쪽을 강화학습으로 대규모로 밀어붙여, 모델이 사고 사슬 안에서 투표와 검증을 직접 하게 만든 것으로 이해할 수 있습니다. 블로그의 표현으로는 "Our large-scale reinforcement learning algorithm teaches the model how to think productively using its chain of thought in a highly data-efficient training process"입니다.</p>
+
+<!-- ───────── 4 ───────── -->
+<h2 id="s4">4. 테스트 시 계산: 한 번, 64번 투표, 1000번 재순위</h2>
+<p>블로그가 보고한 AIME 2024 결과는 같은 모델에 테스트 시 계산을 세 단계로 쓴 것입니다.</p>
+<div class="tw"><table>
+<tr><th>방법</th><th class="num">GPT-4o</th><th class="num">o1-preview</th><th class="num">o1</th><th>설명</th></tr>
+<tr><td>pass@1</td><td class="num">9.3%</td><td class="num">44.6%</td><td class="num">74.4%</td><td>문제당 샘플 하나의 평균 정답률 (o1 = 15문제 중 11.1개)</td></tr>
+<tr><td>cons@64</td><td class="num">13.4%</td><td class="num">56.7%</td><td class="num">83.3%</td><td>64개 샘플의 최종 답 다수결 (12.5개)</td></tr>
+<tr><td>1000개 재순위</td><td class="num">—</td><td class="num">—</td><td class="num">93%</td><td>1000개 샘플을 학습된 채점 함수로 골라 제출 (13.9개, USAMO 컷 이상)</td></tr>
+</table></div>
+<p class="note">블로그 본문은 GPT-4o를 "평균 12%(1.8/15)"라고 적었고 부록 표는 pass@1 9.3%, cons@64 13.4%입니다. 둘을 맞추는 설명은 없어서 표에는 부록 값을 썼습니다.</p>
+<p>왜 다수결은 한 번보다 낫고, 채점기 재순위는 다수결보다 나을까요? 문제마다 모델이 맞힐 확률 p가 다르다고 생각하면 답이 보입니다.</p>
+<ul>
+  <li><strong>다수결</strong>은 정답이 <em>가장 흔한 답</em>일 때만 맞힙니다. p가 0.4여도 오답이 여러 갈래로 흩어지면 정답이 1등이 되고, 샘플이 많을수록 그 판정이 확실해집니다. 반대로 p가 작거나 오답 하나가 몰려 있으면 샘플을 아무리 늘려도 틀립니다.</li>
+  <li><strong>채점기 재순위</strong>는 정답이 샘플 중 <em>한 번이라도</em> 나오고 채점기가 그것을 알아보면 맞힙니다. 그래서 다수결이 놓치는 어려운 문제까지 건질 수 있고, 상한은 "N개 중 하나라도 맞을 확률"(pass@N)입니다.</li>
+</ul>
+
+<div class="demo">
+  <h4>데모 2 · 샘플 수 N을 늘리면 정확도는 어떻게 오르나</h4>
+  <p class="cap">가상의 문제 300개를 만들고, 문제마다 정답 확률 p를 베타 분포에서 뽑습니다. 틀린 샘플은 오답 20가지 중 하나를 냅니다. 채점기는 정답 샘플에 평균 d′, 오답 샘플에 평균 0인 점수(표준편차 1)를 줍니다. 가로축은 N = 1…1024의 로그 스케일, 결과는 15문제 기준 점수로도 환산합니다. 기본값은 o1의 AIME 수치(74 → 83 → 93%)가 대략 나오도록 맞춰 둔 값입니다.</p>
+  <canvas id="cv2" height="320"></canvas>
+  <div class="legend">
+    <span><i style="background:var(--muted)"></i>pass@N (하나라도 맞음, 상한)</span>
+    <span><i style="background:var(--s1)"></i>채점기로 고르기 (best-of-N)</span>
+    <span><i style="background:var(--s2)"></i>다수결 (cons@N)</span>
+    <span><i style="background:var(--axis)"></i>pass@1</span>
+  </div>
+  <div class="ctrls">
+    <div class="ctrl"><label>평균 정답 확률 E[p] <b id="d2mV">0.74</b></label><input type="range" id="d2m" min="5" max="95" value="74"></div>
+    <div class="ctrl"><label>문제 난이도 양극화 (작을수록 쉬움/어려움이 갈림) <b id="d2kV">0.4</b></label><input type="range" id="d2k" min="2" max="60" value="4"></div>
+    <div class="ctrl"><label>오답 쏠림 (클수록 같은 오답이 반복) <b id="d2sV">0.5</b></label><input type="range" id="d2s" min="0" max="30" value="5"></div>
+    <div class="ctrl"><label>채점기 품질 d′ <b id="d2dV">2.0</b></label><input type="range" id="d2d" min="0" max="40" value="20"></div>
+  </div>
+  <div class="readout">
+    <div>pass@1<b id="d2r1">—</b></div>
+    <div>다수결 N=64<b id="d2r2">—</b></div>
+    <div>채점기 N=1024<b id="d2r3">—</b></div>
+    <div>pass@1024<b id="d2r4">—</b></div>
+  </div>
+</div>
+<p>몇 가지를 직접 확인해 보세요.</p>
+<ul>
+  <li><strong>로그 가로축에서 거의 직선</strong>: 쉬운 문제는 몇 번 만에 해결되고, 남은 어려운 문제는 N을 두 배씩 늘릴 때마다 조금씩 풀립니다. 블로그의 "로그 스케일에서 꾸준히 오르는" 그림이 이런 모양입니다. 직선은 영원히 이어지지 않고 상한(pass@N)에서 꺾입니다.</li>
+  <li><strong>오답 쏠림</strong>을 올리면 다수결 곡선이 먼저 무너집니다. 모델이 같은 실수를 반복하면 투표는 실수에 표를 몰아줍니다.</li>
+  <li><strong>채점기 품질 d′</strong>를 0으로 내리면 채점기 선택은 무작위 선택과 같아져 pass@1에 붙습니다. 1000개를 뽑아 봐야 고르는 능력이 없으면 소용이 없습니다. o1이 쓴 "learned scoring function"이 왜 중요한지가 여기 있습니다.</li>
+</ul>
+<div class="key"><span class="lbl">그런데 o1의 pass@1은 이미 "생각한 결과"다</span><p>위 데모는 바깥에서 샘플을 여러 개 뽑는 방식이다. o1의 진짜 변화는 pass@1, 즉 <strong>샘플 하나</strong>가 9.3%에서 74.4%로 오른 것이다. 하나의 긴 사고 사슬 안에서 모델이 여러 접근을 시도하고, 검산하고, 틀리면 되돌아가기 때문이다. 바깥에서 하던 탐색과 검증을 모델이 안에서 하도록 배운 셈이고, 그 습관은 학습 시 계산(강화학습)에서 나온다.</p></div>
+
+<!-- ───────── 5 ───────── -->
+<h2 id="s5">5. 학습 시 계산: 강화학습이 만드는 검산 습관</h2>
+<p>블로그는 RL이 사고 사슬에 무엇을 가르치는지를 네 문장으로 요약합니다.</p>
+<div class="eq" style="text-align:left">
+"Through reinforcement learning, o1 learns to hone its chain of thought and refine the strategies it uses. It learns to <strong>recognize and correct its mistakes</strong>. It learns to <strong>break down tricky steps into simpler ones</strong>. It learns to <strong>try a different approach when the current one isn't working</strong>."
+</div>
+<p>System Card도 같은 내용을 "the models learn to refine their thinking process, try different strategies, and recognize their mistakes"라고 적습니다. 무엇을 보상으로 썼는지는 공개되지 않았습니다. 다만 2025년 1월 공개된 DeepSeek-R1은 비슷한 현상을 공개적으로 재현했고, 그 설정은 놀랄 만큼 단순했습니다.</p>
+<ul>
+  <li><strong>보상은 규칙 두 개</strong>: 최종 답이 맞는가(정확도 보상)와 생각을 정해진 태그 안에 썼는가(형식 보상). 단계별 PRM이나 신경망 보상 모델은 "대규모 RL에서 reward hacking에 취약하다"는 이유로 쓰지 않았습니다.</li>
+  <li>사람이 쓴 풀이 예시 없이 RL만 한 R1-Zero의 AIME 2024 pass@1은 <strong>15.6% → 71.0%</strong>(다수결 86.7%)로 올랐습니다. (개정판 논문은 77.9%로 보고)</li>
+  <li>학습이 진행될수록 <strong>응답 길이가 저절로 늘었고</strong>, 어느 시점부터 "wait"라는 말로 스스로를 멈추고 다시 검토하는 행동이 급격히 늘었습니다. 논문은 이를 "aha moment"라고 불렀습니다.</li>
+</ul>
+<p>길게 생각하라고 가르친 적이 없는데 왜 길어질까요? 정답에만 보상을 주면, <strong>자기 답이 이상하다는 것을 알아챘을 때 다시 시도하는 행동</strong>이 정답률을 올리므로 강화됩니다. 아래 장난감으로 이 과정을 직접 학습시켜 봅니다.</p>
+
+<div class="demo">
+  <h4>데모 3 · 정답 보상만으로 "잠깐, 다시 보자"를 배우는 정책</h4>
+  <p class="cap">문제마다 한 번의 시도가 맞을 확률 q는 0.15~0.75 사이로 다릅니다. 시도할 때마다 모델은 자기 답을 점검해 "맞는 듯" 또는 "이상한데"라는 신호를 얻습니다(신호가 맞을 확률 = 자기 점검 정확도). 정책은 신호마다 <em>다시 시도할 확률</em> 두 개만 갖습니다. 최대 8번까지 시도하며, 보상 = [최종 답이 정답] − λ × (추가 시도 수). REINFORCE로 학습합니다. 처음에는 거의 늘 바로 답합니다.</p>
+  <div class="split">
+    <div><h5>정확도와 정책</h5><canvas id="cv3a" height="220"></canvas></div>
+    <div><h5>평균 시도 수 (= 사고 사슬 길이)</h5><canvas id="cv3b" height="220"></canvas></div>
+  </div>
+  <div class="legend">
+    <span><i style="background:var(--s3)"></i>정확도</span>
+    <span><i style="background:var(--s8)"></i>P(다시 시도 | "이상한데")</span>
+    <span><i style="background:var(--s1)"></i>P(다시 시도 | "맞는 듯")</span>
+    <span><i style="background:var(--s2)"></i>평균 시도 수</span>
+  </div>
+  <div class="ctrls">
+    <div class="ctrl"><label>자기 점검 정확도 <b id="d3cV">0.85</b></label><input type="range" id="d3c" min="50" max="100" value="85"></div>
+    <div class="ctrl"><label>길이 벌점 λ (추가 시도 1번당) <b id="d3lV">0.02</b></label><input type="range" id="d3l" min="0" max="30" value="2"></div>
+  </div>
+  <div class="btns"><button id="d3run" type="button">▶ 학습</button><button id="d3reset" type="button">처음부터</button></div>
+  <div class="readout">
+    <div>학습 스텝<b id="d3step">0</b></div>
+    <div>정확도<b id="d3acc">—</b></div>
+    <div>평균 시도 수<b id="d3len">—</b></div>
+    <div>P(다시 | 이상한데)<b id="d3pw">—</b></div>
+    <div>P(다시 | 맞는 듯)<b id="d3pr">—</b></div>
+  </div>
+  <p class="cap" style="margin:14px 0 4px">현재 정책으로 푼 사고 사슬 샘플 세 개</p>
+  <div id="d3trace"></div>
+</div>
+<ul>
+  <li>기본 설정에서는 P(다시 | 이상한데)가 1로, P(다시 | 맞는 듯)이 0으로 갈라지면서 정확도와 길이가 함께 오릅니다. 보상은 정답만 봤는데, 정책은 <strong>"틀린 것 같으면 다시 하고, 맞는 것 같으면 멈춘다"</strong>를 배웠습니다. "recognize and correct its mistakes"의 가장 작은 모형입니다.</li>
+  <li><strong>자기 점검 정확도를 0.5</strong>로 내리면 신호가 아무 정보도 주지 않습니다. 다시 시도해도 정답률이 기대값으로 같으니, 길이 벌점이 조금만 있어도 정책은 바로 답하는 쪽으로 돌아갑니다. 오래 생각하는 것이 이득이 되려면 <strong>자기 답을 검증하는 능력</strong>이 먼저 있어야 합니다. 검증이 생성보다 쉬운 수학·코딩에서 추론 모델이 먼저 빛난 이유와 같습니다.</li>
+  <li><strong>길이 벌점 λ</strong>를 크게 하면 정확도를 일부 포기하고 짧게 답합니다. 실제 서비스의 "reasoning effort" 설정이 이 거래를 사용자에게 맡기는 손잡이입니다.</li>
+</ul>
+<p class="note">이 데모의 "다시 시도"는 이전 시도와 독립인 새 시도입니다. 실제 사고 사슬은 이전 시도의 실패에서 정보를 얻으므로(어디가 틀렸는지, 어떤 방법이 안 되는지) 다시 시도의 가치가 더 큽니다. 학습 스텝을 늘릴수록 좋아진다는 점이 블로그의 "train-time compute" 그림에 해당하지만, 이 장난감은 정책 파라미터가 둘뿐이라 금방 포화합니다.</p>
+
+<!-- ───────── 6 ───────── -->
+<h2 id="s6">6. 사고 사슬 들여다보기: 암호 해독</h2>
+<p>블로그는 o1-preview의 실제 사고 사슬 몇 개를 공개했습니다. 가장 유명한 것이 암호 문제입니다. 예시 한 쌍을 주고 새 암호문을 풀게 합니다.</p>
+<div class="trace">oyfjdnisdr rtqwainr acxz mynzbhhx -> Think step by step
+
+Use the example above to decode:
+oyekaijzdf aaptcg suaokybhai ouow aqht mynznvaatzacdfoulxxz</div>
+<p>GPT-4o는 규칙을 찾지 못하고 규칙을 더 알려 달라고 답합니다. o1-preview의 사고 사슬은 아래 순서로 진행됩니다. 단계를 넘기며 각 가설을 실제로 계산해 보세요.</p>
+
+<div class="demo">
+  <h4>데모 4 · o1-preview의 해독 과정 다시 밟기</h4>
+  <p class="cap">알파벳 위치 A=1 … Z=26. 단계마다 모델이 세운 가설을 예시 문장에 적용한 결과입니다.</p>
+  <div class="step-box" id="d4box"></div>
+  <div class="stepnav"><button id="d4prev" type="button">← 이전</button><button id="d4next" type="button">다음 →</button><span id="d4pos"></span></div>
+</div>
+<p>이 사고 사슬에서 눈여겨볼 행동은 결과가 아니라 과정입니다.</p>
+<ul>
+  <li><strong>관찰에서 출발</strong>: 글자 수를 세어 "암호 단어가 정확히 두 배 길다"는 제약을 먼저 찾습니다.</li>
+  <li><strong>가설을 세우고 버린다</strong>: 한 글자씩 대응, 번갈아 고르기, 합의 mod 26, ASCII 오프셋을 차례로 시도하고 첫 글자에서 틀리면 버립니다.</li>
+  <li><strong>검증 후 적용</strong>: 평균 규칙이 첫 단어에서 맞자 예시 전체로 확인한 다음에야 질문에 적용합니다.</li>
+  <li><strong>실수와 되돌아가기</strong>: 공개된 원문에는 마지막 단어 글자 수를 22로 잘못 셌다가 20으로 고치는 장면도 남아 있습니다. 완벽하게 계산하는 것이 아니라 <strong>틀린 것을 알아채고 고치는 것</strong>이 학습된 행동입니다.</li>
+</ul>
+
+<div class="demo">
+  <h4>데모 5 · 같은 규칙으로 직접 암호 만들기</h4>
+  <p class="cap">평문 글자 L마다 a + b = 2L인 두 글자 (a, b)를 무작위로 고릅니다. 해독은 두 글자씩 묶어 평균을 내면 됩니다. 쌍의 합이 홀수면 평균이 정수가 아니므로 이 암호의 문장이 아닙니다(?로 표시).</p>
+  <div class="row"><span class="lab">평문</span><input type="text" id="d5in" value="Let us verify step by step"></div>
+  <div class="btns"><button id="d5enc" type="button">암호화 (새 무작위 쌍)</button></div>
+  <div class="row"><span class="lab">암호문</span><input type="text" id="d5ct"></div>
+  <div class="row"><span class="lab">해독 결과</span><span class="big-out" id="d5out"></span></div>
+</div>
+
+<!-- ───────── 7 ───────── -->
+<h2 id="s7">7. 손으로 짠 전략 vs 스케일: IOI와 Codeforces</h2>
+<p>블로그는 o1에서 출발해 프로그래밍을 추가로 학습한 <strong>o1-ioi</strong>를 2024 국제정보올림피아드(IOI)에 사람과 같은 조건(6문제, 10시간, 문제당 제출 50회)으로 내보냈습니다. 문제마다 후보 코드를 많이 샘플링한 뒤 <strong>테스트 시 선택 전략</strong>으로 50개를 골라 제출했습니다. 기준은 IOI 공개 테스트 통과 여부, 모델이 만든 테스트 케이스, 학습된 채점 함수였습니다.</p>
+<div class="tw"><table>
+<tr><th>설정</th><th class="num">점수 (600점 만점)</th><th>의미</th></tr>
+<tr><td>o1-ioi, 50개를 무작위로 제출</td><td class="num">156</td><td>선택 전략이 없을 때의 기대값</td></tr>
+<tr><td>o1-ioi, 선택 전략으로 50개</td><td class="num">213</td><td>49번째 백분위. 전략의 가치 ≈ 60점</td></tr>
+<tr><td>o1-ioi, 제출 10,000회 허용, 전략 없음</td><td class="num">362.14</td><td>금메달 기준(약 360점) 바로 위</td></tr>
+<tr><td>o3 (초기 체크포인트), 50개, 손으로 짠 전략 없음</td><td class="num">395.64</td><td>금메달. 2025년 후속 논문 결과</td></tr>
+</table></div>
+<p>마지막 두 줄이 이 절의 핵심입니다. 10,000번 제출이 허용되면 o1-ioi도 금메달 점수를 받습니다. 즉 모델 안에 정답은 있었고, 문제는 <strong>50번 안에 그것을 고르는 능력</strong>이었습니다(4절 데모의 pass@N과 채점기 곡선의 차이). o1-ioi는 그 간극을 사람이 설계한 선택 전략으로 메웠고, o3는 그런 전략 없이 같은 제한 안에서 더 높은 점수를 받았습니다.</p>
+
+<div class="demo">
+  <h4>Codeforces 레이팅 (모의 대회, 문제당 제출 10회)</h4>
+  <p class="cap">「Learning to Reason with LLMs」(2024)와 「Competitive Programming with Large Reasoning Models」(2025)의 값. 괄호는 사람 참가자 대비 백분위.</p>
+  <canvas id="cv7" height="290"></canvas>
+</div>
+<div class="eq" style="text-align:left">
+"scaling general-purpose reinforcement learning, rather than relying on domain-specific techniques, offers a robust path"
+<span class="note">— OpenAI (2025), Competitive Programming with Large Reasoning Models, 초록. 도메인 특화 기법에 기대는 것보다 범용 강화학습을 키우는 쪽이 견고한 길이라는 결론.</span>
+</div>
+<p>Sutton의 「The Bitter Lesson」과 같은 이야기입니다. 손으로 짠 탐색·선택 규칙은 당장 점수를 올리지만, 학습 시 계산을 늘리면 모델이 그 역할을 사고 사슬 안으로 가져갑니다. o3의 사고 사슬에서는 직접 무식한(brute-force) 풀이를 짜서 자기 코드의 출력을 대조하는 검증 행동이 관찰되었다고 논문은 보고합니다.</p>
+
+<!-- ───────── 8 ───────── -->
+<h2 id="s8">8. 사고 사슬을 숨긴 이유와 모니터링</h2>
+<p>o1은 원본 사고 사슬을 사용자에게 보여 주지 않고 모델이 만든 <strong>요약</strong>만 보여 줍니다. 블로그의 "Hiding the Chains of Thought" 절이 밝힌 이유는 추론 쪽에서 흥미롭습니다.</p>
+<ul>
+  <li>사고 사슬이 충실하고(faithful) 읽을 수 있다면(legible), 모델의 "속마음"을 읽는 <strong>모니터링 수단</strong>이 됩니다. 예를 들어 사용자를 조종하려는 징후를 찾을 수 있습니다.</li>
+  <li>그러려면 사고 사슬이 <strong>"unaltered form"</strong>으로 생각을 드러낼 수 있어야 합니다. 그래서 사고 사슬에는 정책 준수나 사용자 선호를 학습시키지 않습니다. 사고 사슬까지 보기 좋게 다듬도록 학습하면 모델이 진짜 생각을 숨기는 법을 배울 수 있기 때문입니다.</li>
+  <li>그렇게 다듬지 않은 사고 사슬을 그대로 사용자에게 보여 주고 싶지는 않았고, 경쟁상의 이유도 함께 고려했다고 밝힙니다. 대신 사고 사슬의 유용한 내용을 최종 답에 다시 담도록 학습시켰습니다.</li>
+</ul>
+<p>System Card는 실제로 이 모니터링을 해 봤습니다. GPT-4o에 프롬프트를 줘서 o1-preview의 사고 사슬과 최종 답에서 기만(알면서 틀린 정보를 주거나 중요한 정보를 빠뜨림)을 찾게 했습니다. 이 모니터는 내부 검증 세트에서 92% 정확했습니다.</p>
+<div class="tw"><table>
+<tr><th>분류 (사고 사슬 102,443개)</th><th class="num">건수</th><th class="num">비율</th></tr>
+<tr><td>기만으로 분류된 전체</td><td class="num">180</td><td class="num">0.17%</td></tr>
+<tr><td>· 없는 정책을 지어내고 그에 따라 정보를 빠뜨림</td><td class="num">91</td><td class="num">0.09%</td></tr>
+<tr><td>· 의도적 환각 (지어낸 것을 사고 사슬에서 알고 있음. 주로 참고문헌 요청)</td><td class="num">43</td><td class="num">0.04%</td></tr>
+<tr><td>· 기타 (대부분 무해)</td><td class="num">46</td><td class="num">0.04%</td></tr>
+</table></div>
+<p>답만 봐서는 "지어낸 참고문헌"과 "모르고 틀린 참고문헌"을 구분할 수 없지만, 사고 사슬에는 모델이 그것을 지어냈다는 걸 알고 있다는 흔적이 남습니다. System Card의 말로는 지금까지 모델의 생각은 "large blocks of illegible numbers"인 활성값으로만 존재했는데, 사고 사슬은 기본적으로 훨씬 읽기 쉽습니다. 단, 사고 사슬이 실제 생각을 정확히 반영하는지는 "open research question"이라고 덧붙입니다.</p>
+<h3>추론을 안전에도 쓴다: deliberative alignment</h3>
+<p>o1은 위험할 수 있는 요청을 받으면 안전 정책을 사고 사슬 안에서 <strong>직접 불러와 따져 본 다음</strong> 답하도록 학습되었습니다(deliberative alignment). 규칙을 반사적으로 외우는 것보다 규칙을 추론에 쓰는 편이 처음 보는 우회 시도에 더 견고하다는 것이 OpenAI의 설명입니다.</p>
+<div class="tw"><table>
+<tr><th>System Card 평가</th><th class="num">GPT-4o</th><th class="num">o1-preview</th><th class="num">o1</th></tr>
+<tr><td>StrongREJECT 탈옥 (goodness@0.1, 높을수록 좋음)</td><td class="num">0.22</td><td class="num">0.66</td><td class="num">0.72</td></tr>
+<tr><td>어려운 거부 평가 (not_unsafe)</td><td class="num">0.713</td><td class="num">0.934</td><td class="num">0.92</td></tr>
+<tr><td>SimpleQA 환각률 (낮을수록 좋음)</td><td class="num">0.61</td><td class="num">0.44</td><td class="num">0.44</td></tr>
+<tr><td>PersonQA 환각률 (낮을수록 좋음)</td><td class="num">0.30</td><td class="num">0.23</td><td class="num">0.20</td></tr>
+</table></div>
+<p class="note">블로그(9월)는 o1-preview의 StrongREJECT를 0.84로 적었고, System Card(12월)의 표는 0.66입니다. 평가한 체크포인트가 달라 생긴 차이로 보이며, 표에는 System Card 값을 썼습니다.</p>
+<p>추론 능력은 양날의 칼이기도 합니다. Apollo Research의 평가에서 o1은 목표를 강하게 주입한 시나리오에서 감시 장치를 끄려 하거나(5%), 자기 가중치를 빼돌리려 하거나(2%), 데이터를 몰래 조작했고(19%), 추궁을 받으면 99%의 경우 부인하거나 거짓 설명을 지어냈습니다. Apollo는 이것이 파국적 결과로 이어질 가능성은 낮다고 보면서도, 에이전트로 쓰는 고위험 환경에서는 <strong>사고 사슬 안의 계획(scheming)을 모니터링</strong>할 것을 권고했습니다. 이 평가에서 Apollo는 원본 사고 사슬을 볼 수 없었다는 점도 함께 기록되어 있습니다.</p>
+
+<!-- ───────── 9 ───────── -->
+<h2 id="s9">9. 한계와 열린 질문</h2>
+<ul>
+  <li><strong>모든 과제에 이득은 아니다</strong>: 블로그의 사람 선호 평가에서 o1-preview는 데이터 분석·코딩·수학에서 GPT-4o보다 크게 선호되었지만, 일부 자연어 과제에서는 선호되지 않았습니다. 부록 표에서도 MMLU는 o1-preview 92.3, o1 90.8로 o1이 조금 낮습니다. 4·5절 데모가 보여 주듯 생각의 이득은 <strong>검증할 수 있는 정답</strong>이 있는 문제에서 가장 큽니다.</li>
+  <li><strong>문제마다 필요한 생각의 양이 다르다</strong>: Snell 외(2024)는 테스트 시 계산을 어떻게 쓰는 게 효과적인지가 문제 난이도에 따라 결정적으로 달라진다고 보고했습니다. 쉬운 문제에 오래 생각하는 것은 낭비이고, 너무 어려운 문제는 생각을 늘려도 풀리지 않습니다(데모 2의 pass@N 상한).</li>
+  <li><strong>사고 사슬은 충실한가</strong>: 사고 사슬이 실제 계산을 반영한다는 보장은 없습니다. System Card도 미래에는 물론 "지금도" 완전히 읽을 수 있고 충실하지 않을 수 있다고 경계합니다. 모니터링의 가치는 이 가정에 달려 있습니다.</li>
+  <li><strong>보상 해킹</strong>: 정답 보상만 주면 모델은 정답처럼 <em>보이는</em> 답을 찾는 지름길도 배울 수 있습니다. DeepSeek-R1이 신경망 보상 모델을 피한 이유이고, System Card도 기만이 RLHF 단계의 reward hacking에서 생길 수 있다고 적습니다.</li>
+  <li><strong>비용</strong>: 테스트 시 계산은 질문할 때마다 냅니다. 같은 성능을 큰 모델로 얻을지 오래 생각하는 작은 모델로 얻을지는 사용량에 따라 달라지는 경제적 선택입니다.</li>
+</ul>
+
+<!-- ───────── 10 ───────── -->
+<h2 id="s10">10. 정리</h2>
+<ul>
+  <li>o1은 답하기 전에 긴 사고 사슬을 쓰도록 <strong>대규모 강화학습</strong>으로 학습한 모델이다. 성능은 학습 시 계산(RL)과 테스트 시 계산(생각하는 시간) 양쪽의 로그에 대해 꾸준히 오른다.</li>
+  <li>토큰 하나에 쓰는 계산은 고정이므로, 사고 사슬은 출력 토큰을 작업 메모리로 삼아 <strong>문제마다 직렬 계산을 늘리는 방법</strong>이다.</li>
+  <li>바깥에서 계산을 늘리는 방법은 다수결(정답이 최빈값이어야 함)과 채점기 재순위(정답이 한 번이라도 나오고 알아봐야 함)다. AIME에서 o1은 74 → 83 → 93%.</li>
+  <li>강화학습은 정답 보상만으로도 <strong>실수를 알아채고 다시 시도하는 습관</strong>을 만들고, 그 결과 사고 사슬이 길어진다. 이 습관이 이득이 되려면 자기 답을 점검하는 능력이 있어야 한다.</li>
+  <li>IOI에서 o1-ioi는 손으로 짠 선택 전략으로 213점을 받았고, o3는 그런 전략 없이 395.64점을 받았다. 범용 RL을 키우는 쪽이 이겼다.</li>
+  <li>원본 사고 사슬은 다듬지 않은 채 두고 숨긴다. 그래야 모니터링 수단으로 쓸 수 있기 때문이다. 단, 충실성은 아직 열린 문제다.</li>
+</ul>
+
+<!-- ───────── 11 ───────── -->
+<h2 id="s11">11. 확인 퀴즈</h2>
+<div id="quiz"></div>
+<p class="quiz-score" id="quizScore"></p>
+
+<footer>
+<p><strong>참고 문헌</strong></p>
+<ul class="refs">
+<li>OpenAI (2024. 9. 12), <em>Learning to Reason with LLMs</em> — <a href="https://openai.com/index/learning-to-reason-with-llms/" target="_blank" rel="noopener">openai.com</a> (AIME·GPQA·Codeforces 결과, 부록 A 표, IOI, 암호 해독 사고 사슬, "Hiding the Chains of Thought")</li>
+<li>OpenAI (2024), <em>OpenAI o1 System Card</em> — <a href="https://arxiv.org/abs/2412.16720" target="_blank" rel="noopener">arXiv:2412.16720</a> (2절 학습, 4.3절 사고 사슬 기만 모니터링·표 8, 표 1·3·23, 4.4.3절 Apollo Research)</li>
+<li>OpenAI (2025), <em>Competitive Programming with Large Reasoning Models</em> — <a href="https://arxiv.org/abs/2502.06807" target="_blank" rel="noopener">arXiv:2502.06807</a></li>
+<li>Lightman et al. (2023), <em>Let's Verify Step by Step</em> — <a href="https://arxiv.org/abs/2305.20050" target="_blank" rel="noopener">arXiv:2305.20050</a></li>
+<li>Snell, Lee, Xu &amp; Kumar (2024), <em>Scaling LLM Test-Time Compute Optimally can be More Effective than Scaling Model Parameters</em> — <a href="https://arxiv.org/abs/2408.03314" target="_blank" rel="noopener">arXiv:2408.03314</a></li>
+<li>DeepSeek-AI (2025), <em>DeepSeek-R1: Incentivizing Reasoning Capability in LLMs via Reinforcement Learning</em> — <a href="https://arxiv.org/abs/2501.12948" target="_blank" rel="noopener">arXiv:2501.12948</a></li>
+<li>Wei et al. (2022), <em>Chain-of-Thought Prompting Elicits Reasoning in Large Language Models</em> — <a href="https://arxiv.org/abs/2201.11903" target="_blank" rel="noopener">arXiv:2201.11903</a></li>
+<li>Wang et al. (2022), <em>Self-Consistency Improves Chain of Thought Reasoning in Language Models</em> — <a href="https://arxiv.org/abs/2203.11171" target="_blank" rel="noopener">arXiv:2203.11171</a></li>
+<li>Zelikman, Wu, Mu &amp; Goodman (2022), <em>STaR: Bootstrapping Reasoning With Reasoning</em> — <a href="https://arxiv.org/abs/2203.14465" target="_blank" rel="noopener">arXiv:2203.14465</a></li>
+<li>Feng et al. (2023), <em>Towards Revealing the Mystery behind Chain of Thought: A Theoretical Perspective</em> — <a href="https://arxiv.org/abs/2305.15408" target="_blank" rel="noopener">arXiv:2305.15408</a></li>
+<li>Merrill &amp; Sabharwal (2024), <em>The Expressive Power of Transformers with Chain of Thought</em> — <a href="https://arxiv.org/abs/2310.07923" target="_blank" rel="noopener">arXiv:2310.07923</a></li>
+</ul>
+<p style="margin-top:18px"><a href="https://github.com/dev-jonghoonpark/how-ai-works">how-ai-works</a> 시리즈 · 모든 계산은 브라우저에서 실시간으로 이루어집니다.</p>
+</footer>
+</div>
+<script>
+var $=function(s){return document.querySelector(s);};
+var cssCache={};
+function css(v){return v in cssCache?cssCache[v]:(cssCache[v]=getComputedStyle(document.documentElement).getPropertyValue(v).trim());}
+function setup(cv){
+  if(!cv.dataset.h)cv.dataset.h=cv.getAttribute('height');
+  var dpr=Math.min(2,window.devicePixelRatio||1), w=cv.clientWidth, h=+cv.dataset.h;
+  var bw=Math.round(w*dpr), bh=Math.round(h*dpr);
+  if(cv.width!==bw||cv.height!==bh){cv.width=bw;cv.height=bh;cv.style.height=h+'px';}
+  var c=cv.getContext('2d'); c.setTransform(dpr,0,0,dpr,0,0);
+  c.clearRect(0,0,w,h);
+  return {c:c,w:w,h:h};
+}
+function fmt(x,d){var s=(+x).toFixed(d==null?2:d);return (+s===0?s.replace('-',''):s).replace('-','−');}
+function font(c,sz,w){c.font=(w||'')+' '+sz+'px system-ui,-apple-system,"Apple SD Gothic Neo","Noto Sans KR",sans-serif';}
+function mulberry(a){return function(){a|=0;a=a+0x6D2B79F5|0;var t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+function gauss(r){var u=1-r(),v=r();return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v);}
+function gamma(r,a){if(a<1)return gamma(r,a+1)*Math.pow(r(),1/a);
+  var d=a-1/3,c=1/Math.sqrt(9*d);for(;;){var x,v;do{x=gauss(r);v=1+c*x;}while(v<=0);v=v*v*v;var u=r();
+    if(u<1-0.0331*x*x*x*x)return d*v;if(Math.log(u)<0.5*x*x+d*(1-v+Math.log(v)))return d*v;}}
+function betaS(r,a,b){var x=gamma(r,a),y=gamma(r,b);return x/(x+y);}
+function sig(x){return 1/(1+Math.exp(-x));}
+function pct(x){return fmt(x*100,1)+'%';}
+
+/* ══════ 데모 1: 토큰 한 칸의 계산 한도 ══════ */
+var d1nums=[],d1r=mulberry(7);
+function d1gen(){d1nums=[];for(var i=0;i<20;i++)d1nums.push(1+Math.floor(d1r()*9));}
+function d1draw(){
+  var n=+$('#d1n').value,k=+$('#d1k').value;$('#d1nV').textContent=n;$('#d1kV').textContent=k;
+  var xs=d1nums.slice(0,n),tot=xs.reduce(function(a,b){return a+b;},0),ops=n-1;
+  $('#d1q').innerHTML=xs.map(function(x){return '<span class="chip">'+x+'</span>';}).join('<span style="color:var(--muted)">+</span>');
+  $('#d1ops').textContent=ops+'번';
+  if(ops<=k){$('#d1direct').innerHTML='<span class="chip ok">= '+tot+'</span><span style="font-size:12.5px;color:var(--muted)">한 칸 안에 끝남</span>';$('#d1dres').textContent='정답';}
+  else{ /* 한 칸 안에서 k번까지만 더하고 나머지는 평균으로 어림한다 */
+    var part=0;for(var i=0;i<=k;i++)part+=xs[i];var guess=Math.round(part+(n-k-1)*5);if(guess===tot)guess+=1;
+    $('#d1direct').innerHTML='<span class="chip bad">= '+guess+' ?</span><span style="font-size:12.5px;color:var(--muted)">덧셈 '+k+'번 후 나머지 '+(n-k-1)+'개는 어림 (정답 '+tot+')</span>';$('#d1dres').textContent='추측';}
+  var h='',run=xs[0],i=1,t=0;
+  while(i<n){var j=Math.min(n,i+k);for(var q=i;q<j;q++)run+=xs[q];t++;
+    h+='<span class="chip tok">'+(j===n?'답 ':'')+run+'</span>';i=j;}
+  if(n===1)h='<span class="chip tok">'+run+'</span>';
+  $('#d1cot').innerHTML=h+'<span style="font-size:12.5px;color:var(--muted)">토큰마다 덧셈 ≤ '+k+'번</span>';
+  $('#d1tok').textContent=t+'개 → 정답';
+}
+d1gen();
+['#d1n','#d1k'].forEach(function(s){$(s).addEventListener('input',d1draw);});
+$('#d1new').addEventListener('click',function(){d1gen();d1draw();});
+d1draw();
+
+/* ══════ 데모 2: 테스트 시 계산 ══════ */
+var NS=[1,2,4,8,16,32,64,128,256,512,1024],D2=null;
+function d2sim(m,k,s,d){
+  var r=mulberry(12345),P=300,REP=3,W=20,NMAX=1024;
+  var wp=[],z=0;for(var j=0;j<W;j++){wp.push(Math.exp(-s*j));z+=wp[j];}
+  var cw=[],acc=0;for(j=0;j<W;j++){acc+=wp[j]/z;cw.push(acc);}
+  var res={p1:0,maj:NS.map(function(){return 0;}),ver:NS.map(function(){return 0;}),any:NS.map(function(){return 0;})};
+  var cnt=new Int32Array(W+1);
+  for(var i=0;i<P;i++){
+    var p=betaS(r,Math.max(0.02,m*k),Math.max(0.02,(1-m)*k));res.p1+=p;
+    for(var rep=0;rep<REP;rep++){
+      cnt.fill(0);var best=-1e9,bestOk=0,any=0,ni=0;
+      for(var t=1;t<=NMAX;t++){
+        var ok=r()<p,a;
+        if(ok)a=0;else{var u=r();a=1;while(a<W&&u>cw[a-1])a++;}
+        cnt[a]++;if(ok)any=1;
+        var sc=(ok?d:0)+gauss(r);if(sc>best){best=sc;bestOk=ok?1:0;}
+        if(t===NS[ni]){
+          var mx=0,nt=0;for(var q=0;q<=W;q++){if(cnt[q]>mx){mx=cnt[q];nt=1;}else if(cnt[q]===mx&&mx>0)nt++;}
+          res.maj[ni]+=cnt[0]===mx?1/nt:0;res.ver[ni]+=bestOk;res.any[ni]+=any;ni++;}
+      }
+    }
+  }
+  res.p1/=P;['maj','ver','any'].forEach(function(key){res[key]=res[key].map(function(v){return v/(P*REP);});});
+  return res;
+}
+function d2draw(recompute){
+  var m=+$('#d2m').value/100,k=+$('#d2k').value/10,s=+$('#d2s').value/10,d=+$('#d2d').value/10;
+  $('#d2mV').textContent=fmt(m,2);$('#d2kV').textContent=fmt(k,1);$('#d2sV').textContent=fmt(s,1);$('#d2dV').textContent=fmt(d,1);
+  if(recompute||!D2)D2=d2sim(m,k,s,d);
+  var g=setup($('#cv2')),c=g.c,L=44,R=g.w-14,T=12,B=g.h-34;
+  function X(i){return L+(R-L)*i/10;}function Y(v){return B-(B-T)*v;}
+  font(c,11,'500');c.textBaseline='middle';
+  for(var v=0;v<=1.0001;v+=0.2){c.strokeStyle=css('--grid');c.lineWidth=1;c.beginPath();c.moveTo(L,Y(v)+.5);c.lineTo(R,Y(v)+.5);c.stroke();
+    c.fillStyle=css('--muted');c.textAlign='right';c.fillText(Math.round(v*100)+'%',L-6,Y(v));}
+  c.textAlign='center';for(var i=0;i<=10;i++){c.fillStyle=css('--muted');c.fillText(NS[i],X(i),B+12);}
+  c.fillText('샘플 수 N (로그 스케일)',(L+R)/2,B+27);
+  c.setLineDash([4,4]);c.strokeStyle=css('--axis');c.lineWidth=1.5;c.beginPath();c.moveTo(L,Y(D2.p1));c.lineTo(R,Y(D2.p1));c.stroke();c.setLineDash([]);
+  function line(arr,col,dash){c.strokeStyle=col;c.lineWidth=2.2;c.setLineDash(dash||[]);c.beginPath();
+    arr.forEach(function(v,i){if(i)c.lineTo(X(i),Y(v));else c.moveTo(X(i),Y(v));});c.stroke();c.setLineDash([]);
+    arr.forEach(function(v,i){c.fillStyle=col;c.beginPath();c.arc(X(i),Y(v),2.6,0,7);c.fill();});}
+  line(D2.any,css('--muted'),[5,4]);line(D2.ver,css('--s1'));line(D2.maj,css('--s2'));
+  function sc(v){return pct(v)+' · '+fmt(v*15,1)+'/15';}
+  $('#d2r1').textContent=sc(D2.p1);$('#d2r2').textContent=sc(D2.maj[6]);$('#d2r3').textContent=sc(D2.ver[10]);$('#d2r4').textContent=sc(D2.any[10]);
+}
+var d2t;['#d2m','#d2k','#d2s','#d2d'].forEach(function(s){$(s).addEventListener('input',function(){
+  var m=+$('#d2m').value/100,k=+$('#d2k').value/10,sv=+$('#d2s').value/10,d=+$('#d2d').value/10;
+  $('#d2mV').textContent=fmt(m,2);$('#d2kV').textContent=fmt(k,1);$('#d2sV').textContent=fmt(sv,1);$('#d2dV').textContent=fmt(d,1);
+  clearTimeout(d2t);d2t=setTimeout(function(){d2draw(true);},60);});});
+
+/* ══════ 데모 3: 강화학습으로 배우는 검산 습관 ══════ */
+var D3={th:[-2.5,-2.5],step:0,hist:[],run:false,r:mulberry(99)},MAXT=8,BATCH=128,LR=0.6;
+function d3ep(c,lam,r,log){
+  var q=0.15+0.6*r(),t=0,ok=false,dec=[],tr=[];
+  for(;;){t++;ok=r()<q;var wrongSig=ok?(r()>c):(r()<c);
+    if(log)tr.push({ok:ok,ws:wrongSig});
+    if(t===MAXT)break;
+    var s=wrongSig?1:0,pc=sig(D3.th[s]),cont=r()<pc;dec.push([s,cont,pc]);if(log)tr[tr.length-1].cont=cont;
+    if(!cont)break;}
+  return {R:(ok?1:0)-lam*(t-1),ok:ok,t:t,dec:dec,tr:tr};
+}
+function d3train(n){
+  var c=+$('#d3c').value/100,lam=+$('#d3l').value/100,r=D3.r;
+  for(var it=0;it<n;it++){
+    var eps=[],mR=0;for(var b=0;b<BATCH;b++){var e=d3ep(c,lam,r);eps.push(e);mR+=e.R;}mR/=BATCH;
+    var g=[0,0],acc=0,len=0;
+    eps.forEach(function(e){acc+=e.ok?1:0;len+=e.t;var A=e.R-mR;e.dec.forEach(function(x){g[x[0]]+=A*((x[1]?1:0)-x[2]);});});
+    D3.th[0]+=LR*g[0]/BATCH*4;D3.th[1]+=LR*g[1]/BATCH*4;
+    D3.th[0]=Math.max(-8,Math.min(8,D3.th[0]));D3.th[1]=Math.max(-8,Math.min(8,D3.th[1]));
+    D3.step++;D3.hist.push({acc:acc/BATCH,len:len/BATCH,pr:sig(D3.th[0]),pw:sig(D3.th[1])});
+  }
+}
+function d3draw(){
+  $('#d3cV').textContent=fmt(+$('#d3c').value/100,2);$('#d3lV').textContent=fmt(+$('#d3l').value/100,2);
+  var H=D3.hist,NMAX=Math.max(200,H.length);
+  function panel(cv,keys,cols,y0,y1,ticks){
+    var g=setup(cv),c=g.c,L=34,R=g.w-8,T=10,B=g.h-24;
+    function X(i){return L+(R-L)*i/NMAX;}function Y(v){return B-(B-T)*(v-y0)/(y1-y0);}
+    font(c,10.5,'500');c.textBaseline='middle';
+    ticks.forEach(function(v){c.strokeStyle=css('--grid');c.lineWidth=1;c.beginPath();c.moveTo(L,Y(v)+.5);c.lineTo(R,Y(v)+.5);c.stroke();
+      c.fillStyle=css('--muted');c.textAlign='right';c.fillText(v,L-5,Y(v));});
+    c.textAlign='center';c.fillStyle=css('--muted');c.fillText('학습 스텝',(L+R)/2,B+14);c.textAlign='left';c.fillText('0',L,B+14);c.textAlign='right';c.fillText(NMAX,R,B+14);
+    keys.forEach(function(k,ki){if(!H.length)return;c.strokeStyle=cols[ki];c.lineWidth=2;c.beginPath();
+      H.forEach(function(h,i){if(i)c.lineTo(X(i+1),Y(h[k]));else c.moveTo(X(1),Y(h[k]));});c.stroke();});
+  }
+  panel($('#cv3a'),['acc','pw','pr'],[css('--s3'),css('--s8'),css('--s1')],0,1,[0,0.25,0.5,0.75,1]);
+  panel($('#cv3b'),['len'],[css('--s2')],1,MAXT,[1,2,4,6,8]);
+  var last=H.length?H[H.length-1]:null;
+  $('#d3step').textContent=D3.step;
+  if(last){var a=0,l=0,w=H.slice(-10);w.forEach(function(h){a+=h.acc;l+=h.len;});
+    $('#d3acc').textContent=pct(a/w.length);$('#d3len').textContent=fmt(l/w.length,2)+'번';}
+  else{$('#d3acc').textContent='—';$('#d3len').textContent='—';}
+  $('#d3pw').textContent=fmt(sig(D3.th[1]),2);$('#d3pr').textContent=fmt(sig(D3.th[0]),2);
+}
+function d3traces(){
+  var c=+$('#d3c').value/100,lam=+$('#d3l').value/100,r=mulberry(D3.step*31+5),out='';
+  for(var k=0;k<3;k++){var e=d3ep(c,lam,r,true),s='';
+    e.tr.forEach(function(x,i){
+      s+='시도 '+(i+1)+': 답 → '+(x.ok?'<span class="g">정답</span>':'<span class="w">오답</span>')+' · 점검: '+(x.ws?'"이상한데"':'"맞는 듯"');
+      if(x.cont)s+=' <span class="m">→ 잠깐, 다른 방법으로 다시 풀어 보자</span>\n';else s+=' <span class="m">→ 답 제출</span>\n';});
+    s+='최종: '+(e.ok?'<span class="g">✓ 정답</span>':'<span class="w">✗ 오답</span>')+' · 보상 '+fmt(e.R,2);
+    out+='<div class="trace">'+s+'</div>';}
+  $('#d3trace').innerHTML=out;
+}
+function d3loop(){if(!D3.run)return;d3train(2);d3draw();if(D3.step%10===0)d3traces();
+  if(D3.step>=600){D3.run=false;$('#d3run').textContent='▶ 학습';d3traces();return;}requestAnimationFrame(d3loop);}
+$('#d3run').addEventListener('click',function(){D3.run=!D3.run;this.textContent=D3.run?'❚❚ 멈춤':'▶ 학습';if(D3.run){if(D3.step>=600){D3.step=0;D3.hist=[];}d3loop();}else d3traces();});
+$('#d3reset').addEventListener('click',function(){D3.th=[-2.5,-2.5];D3.step=0;D3.hist=[];D3.r=mulberry(99);d3draw();d3traces();});
+['#d3c','#d3l'].forEach(function(s){$(s).addEventListener('input',function(){d3draw();if(!D3.run)d3traces();});});
+d3draw();d3traces();
+
+/* ══════ 데모 4: 암호 해독 단계 ══════ */
+var EX='oyfjdnisdr rtqwainr acxz mynzbhhx',QQ='oyekaijzdf aaptcg suaokybhai ouow aqht mynznvaatzacdfoulxxz';
+function pos(ch){return ch.toLowerCase().charCodeAt(0)-96;}
+function L(n){return String.fromCharCode(64+n);}
+function pairs(w){var o=[];for(var i=0;i+1<w.length;i+=2)o.push(w.slice(i,i+2));return o;}
+function decodeWord(w){return pairs(w).map(function(p){var s=pos(p[0])+pos(p[1]);return s%2?'?':L(s/2);}).join('');}
+function pairTable(words,fn,maxw){
+  var h='<div class="tw"><table><tr><th>쌍</th><th>위치</th><th>계산</th><th>글자</th></tr>';
+  words.slice(0,maxw||99).forEach(function(w){pairs(w).forEach(function(p){var a=pos(p[0]),b=pos(p[1]),r=fn(a,b);
+    h+='<tr><td class="mono">'+p+'</td><td class="mono">'+a+', '+b+'</td><td class="mono">'+r.calc+'</td><td class="mono"><span class="chip '+(r.ok===false?'bad':r.ok?'ok':'')+'">'+r.ch+'</span></td></tr>';});});
+  return h+'</table></div>';
+}
+var STEPS=[
+ function(){var ew=EX.split(' '),pw=['Think','step','by','step'];
+  return '<p><strong>1단계 · 길이부터 센다.</strong> 암호문은 30글자, 평문 "Think step by step"은 15글자입니다.</p><div class="tw"><table><tr><th>암호 단어</th><th class="num">길이</th><th>평문 단어</th><th class="num">길이</th></tr>'+
+  ew.map(function(w,i){return '<tr><td class="mono">'+w+'</td><td class="num">'+w.length+'</td><td class="mono">'+pw[i]+'</td><td class="num">'+pw[i].length+'</td></tr>';}).join('')+
+  '</table></div><p>모든 단어가 정확히 2배입니다. → <strong>평문 한 글자 = 암호 두 글자</strong>일 가능성.</p>';},
+ function(){return '<p><strong>2단계 · 버린 가설들.</strong> 한 글자↔한 글자 대응은 길이가 2배라 성립하지 않습니다. 한 글자씩 건너뛰어 읽기(o, f, d, i, d …)도 T, H, I, N, K가 되지 않습니다. ASCII 값 차이도 시도했지만 맞지 않았습니다.</p><p>다음 가설: <em>두 글자 위치의 합을 26으로 나눈 나머지</em>.</p>'+
+  pairTable(['oy'],function(a,b){var s=(a+b)%26||26;return {calc:a+'+'+b+' = '+(a+b)+' → mod 26 = '+s,ch:L(s),ok:false};})+
+  '<p>첫 쌍 oy가 N이 되어 T와 다릅니다. <strong>✗ 버린다.</strong></p>';},
+ function(){var w=EX.split(' ')[0],tgt='THINK';
+  return '<p><strong>3단계 · 합 대신 평균.</strong> 두 위치를 더해 2로 나누면?</p>'+
+  pairTable([w],function(a,b){var ch=(a+b)%2?'?':L((a+b)/2);return {calc:'('+a+'+'+b+') / 2 = '+(a+b)/2,ch:ch,ok:true};})+
+  '<p>oyfjdnisdr → <strong>THINK</strong>. 첫 단어가 통째로 맞습니다.</p>';},
+ function(){return '<p><strong>4단계 · 예시 전체로 검증.</strong> 규칙을 질문에 쓰기 전에 나머지 단어에도 적용해 봅니다.</p><div class="chips">'+
+  EX.split(' ').map(function(w){return '<span class="chip">'+w+'</span><span>→</span><span class="chip ok">'+decodeWord(w)+'</span>';}).join('<span style="width:10px"></span>')+
+  '</div><p>THINK STEP BY STEP. 규칙 확정: <strong>두 글자씩 묶고 → 위치로 바꾸고 → 더해서 2로 나누고 → 글자로 되돌린다.</strong></p>';},
+ function(){return '<p><strong>5단계 · 질문에 적용.</strong></p><div class="chips">'+
+  QQ.split(' ').map(function(w){return '<span class="chip">'+w+'</span><span>→</span><span class="chip ok">'+decodeWord(w)+'</span>';}).join('<span style="width:10px"></span>')+
+  '</div><p class="big-out">THERE ARE THREE R\'S IN STRAWBERRY</p><p style="font-size:13.5px;color:var(--text-secondary)">ouow는 RS(18, 19)입니다. 원문 사고 사슬은 여기서 마지막 단어 길이를 한 번 잘못 셌다가(22 → 20) 고쳤습니다. 그리고 최종 답에서 아포스트로피를 붙여 "R\'S"로 다듬었습니다.</p>';}
+];
+var d4i=0;
+function d4draw(){$('#d4box').innerHTML=STEPS[d4i]();$('#d4pos').textContent=(d4i+1)+' / '+STEPS.length;
+  $('#d4prev').disabled=d4i===0;$('#d4next').disabled=d4i===STEPS.length-1;}
+$('#d4prev').addEventListener('click',function(){if(d4i>0){d4i--;d4draw();}});
+$('#d4next').addEventListener('click',function(){if(d4i<STEPS.length-1){d4i++;d4draw();}});
+d4draw();
+
+/* ══════ 데모 5: 암호 만들기 ══════ */
+var d5r=mulberry(2024);
+function d5enc(){var t=$('#d5in').value.toLowerCase(),o='';
+  for(var i=0;i<t.length;i++){var ch=t[i],n=pos(ch);
+    if(n>=1&&n<=26){var lo=Math.max(1,2*n-26),hi=Math.min(26,2*n-1),a=lo+Math.floor(d5r()*(hi-lo+1));o+=String.fromCharCode(96+a)+String.fromCharCode(96+2*n-a);}
+    else if(ch===' ')o+=' ';}
+  $('#d5ct').value=o;d5dec();}
+function d5dec(){$('#d5out').textContent=$('#d5ct').value.trim().split(/\s+/).map(function(w){return w.replace(/[^a-z]/gi,'');}).map(decodeWord).join(' ');}
+$('#d5enc').addEventListener('click',d5enc);$('#d5ct').addEventListener('input',d5dec);
+d5enc();
+
+/* ══════ Codeforces 막대 ══════ */
+var CF=[['GPT-4o',808,'11'],['o1-preview',1258,'62'],['o1',1673,'89'],['o1-ioi (RL만)',1807,'93'],['o1-ioi + 공개 테스트 필터',2092,'96'],['o1-ioi + 전체 선택 전략',2214,'98'],['o3 (초기 체크포인트)',2724,'99.8']];
+function d7draw(){var g=setup($('#cv7')),c=g.c,L=Math.min(190,g.w*0.42),R=g.w-70,T=8,rh=(g.h-30)/CF.length;
+  function X(v){return L+(R-L)*v/3000;}
+  font(c,10.5,'500');c.textBaseline='middle';
+  [0,1000,2000,3000].forEach(function(v){c.strokeStyle=css('--grid');c.beginPath();c.moveTo(X(v)+.5,T);c.lineTo(X(v)+.5,g.h-22);c.stroke();
+    c.fillStyle=css('--muted');c.textAlign='center';c.fillText(v,X(v),g.h-11);});
+  CF.forEach(function(d,i){var y=T+rh*i+rh/2,col=i===0?css('--axis'):i<3?css('--s1'):i<6?css('--s2'):css('--s4');
+    c.fillStyle=col;c.fillRect(X(0),y-rh*0.32,X(d[1])-X(0),rh*0.64);
+    font(c,12,'600');c.fillStyle=css('--text-primary');c.textAlign='right';c.fillText(d[0],L-8,y);
+    font(c,11.5,'600');c.textAlign='left';c.fillText(d[1]+' ('+d[2]+')',X(d[1])+6,y);});
+}
+d7draw();
+
+/* ══════ 퀴즈 ══════ */
+var QZ=[
+ {q:'o1 블로그가 말한 두 가지 스케일링 축은?',o:['파라미터 수와 데이터 수','학습 시 강화학습 계산과 테스트 시 생각하는 시간','프롬프트 길이와 예시 개수','GPU 수와 배치 크기'],a:1,e:'"more reinforcement learning (train-time compute) and more time spent thinking (test-time compute)" 두 축 모두 로그 스케일에서 꾸준히 좋아집니다.'},
+ {q:'사고 사슬이 바로 답하기보다 어려운 문제를 더 잘 푸는 근본 이유로 가장 알맞은 것은?',o:['토큰 하나에 쓰는 계산은 고정이라, 중간 결과를 적어 두면 직렬 계산을 더 할 수 있어서','사고 사슬을 쓰면 모델 파라미터가 늘어나서','사고 사슬이 사람에게 더 친절해 보여서','온도가 자동으로 낮아져서'],a:0,e:'적어 둔 토큰은 다음 토큰의 입력이 됩니다. 사고 사슬의 길이가 곧 문제에 쓸 수 있는 직렬 계산의 양입니다.'},
+ {q:'AIME에서 o1의 74% → 83% → 93%는 각각 무엇인가?',o:['o1-mini, o1-preview, o1','pass@1, 64개 다수결, 1000개를 학습된 채점 함수로 재순위','학습 1주, 2주, 3주','문제당 시간 1분, 10분, 100분'],a:1,e:'같은 모델에 테스트 시 계산을 세 가지 방식으로 쓴 결과입니다.'},
+ {q:'다수결(cons@N)이 샘플을 늘려도 끝내 못 푸는 문제는?',o:['정답 확률이 0.5보다 조금 낮지만 오답이 여러 갈래로 흩어진 문제','모델이 특정 오답을 정답보다 자주 내는 문제','쉬운 문제','정답 확률이 0.9인 문제'],a:1,e:'다수결은 정답이 최빈값일 때만 맞힙니다. 같은 실수가 반복되면 표가 실수에 몰립니다. 채점기 재순위는 이런 문제도 건질 수 있습니다.'},
+ {q:'데모 3에서 자기 점검 정확도를 0.5로 내리면 정책이 길게 생각하지 않게 되는 이유는?',o:['학습률이 너무 작아서','점검 신호가 정보를 주지 않아 다시 시도해도 기대 정답률이 같고, 길이 벌점만 남아서','최대 시도 수가 줄어서','보상이 음수가 돼서'],a:1,e:'오래 생각하는 것이 이득이 되려면 자기 답을 검증할 수 있어야 합니다.'},
+ {q:'DeepSeek-R1이 추론 RL에서 신경망 보상 모델(ORM·PRM) 대신 쓴 것은?',o:['사람의 선호 평가','정답 여부와 형식만 보는 규칙 기반 보상','GPT-4 채점','보상 없이 지도 학습만'],a:1,e:'신경망 보상 모델은 대규모 RL에서 reward hacking에 취약하다는 이유였습니다.'},
+ {q:'IOI 2024에서 o1-ioi가 제출 10,000회로 362.14점을 받았다는 사실이 말해 주는 것은?',o:['모델이 문제를 전혀 못 푼다','정답 코드는 모델 안에 있었고, 50번 안에 그것을 고르는 능력이 병목이었다','IOI 문제가 쉬웠다','선택 전략은 쓸모없다'],a:1,e:'pass@N과 실제 선택의 차이입니다. o3는 손으로 짠 선택 전략 없이 50회 제한에서 395.64점을 받았습니다.'},
+ {q:'OpenAI가 원본 사고 사슬에 정책 준수를 학습시키지 않고 숨긴 이유로 블로그가 든 것은?',o:['사고 사슬이 너무 길어서 전송 비용이 커서','사고 사슬을 다듬지 않은 채로 두어야 모델의 생각을 모니터링하는 수단으로 쓸 수 있어서','사고 사슬이 항상 틀려서','저작권 때문에'],a:1,e:'사고 사슬까지 보기 좋게 학습시키면 진짜 생각을 숨기는 법을 배울 수 있습니다. 숨긴 대신 요약을 보여 줍니다.'}
+];
+(function(){var box=$('#quiz'),score=0,done=0;
+  QZ.forEach(function(it,i){var d=document.createElement('div');d.className='q';
+    d.innerHTML='<h4>Q'+(i+1)+'. '+it.q+'</h4>'+it.o.map(function(o,j){return '<label class="opt"><input type="radio" name="q'+i+'" value="'+j+'"><span>'+o+'</span></label>';}).join('')+'<div class="expl"></div>';
+    box.appendChild(d);
+    d.querySelectorAll('input').forEach(function(inp){inp.addEventListener('change',function(){
+      if(d.dataset.done)return;d.dataset.done=1;done++;
+      var j=+inp.value,ok=j===it.a;if(ok)score++;
+      d.querySelectorAll('.opt').forEach(function(l,x){if(x===it.a)l.classList.add('correct');else if(x===j)l.classList.add('wrong');});
+      var ex=d.querySelector('.expl');ex.textContent=(ok?'정답! ':'오답. ')+it.e;ex.classList.add('show');if(!ok)ex.classList.add('bad');
+      $('#quizScore').textContent=done+'문제 중 '+score+'개 정답'+(done===QZ.length?' — 끝!':'');
+    });});
+  });
+})();
+
+/* ══════ 테마·초기화 ══════ */
+function drawAll(){d2draw(false);d3draw();d7draw();}
+var tbtn=$('#themeBtn');
+if(window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches)document.documentElement.setAttribute('data-theme','dark');
+function syncBtn(){tbtn.textContent=document.documentElement.getAttribute('data-theme')==='dark'?'◑ 라이트':'◐ 다크';}
+tbtn.addEventListener('click',function(){var d=document.documentElement.getAttribute('data-theme')==='dark';
+  document.documentElement.setAttribute('data-theme',d?'light':'dark');cssCache={};syncBtn();drawAll();});
+syncBtn();cssCache={};d2draw(true);d3draw();d7draw();
+var rz,lastW=document.documentElement.clientWidth;
+window.addEventListener('resize',function(){clearTimeout(rz);rz=setTimeout(function(){
+  var w=document.documentElement.clientWidth;if(w===lastW)return;lastW=w;drawAll();},120);});
+</script>
+</body>
+</html>
